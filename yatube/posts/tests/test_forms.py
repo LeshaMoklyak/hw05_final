@@ -48,6 +48,7 @@ class PostCreateFormTests(TestCase):
         self.author_client.force_login(self.author)
 
     def test_create_post(self):
+        """Валидная форма создает запись в Post"""
         tasks_count = Post.objects.count()
         form_data = {
             'text': 'Тестовый заголовок2',
@@ -58,6 +59,7 @@ class PostCreateFormTests(TestCase):
             data=form_data,
             follow=True,
         )
+        new_post = Post.objects.latest('id')
         self.assertRedirects(response, reverse('posts:profile', kwargs={
             'username': self.user.username,
         }))
@@ -68,25 +70,48 @@ class PostCreateFormTests(TestCase):
                 group=self.group.id,
             ).exists()
         )
+        self.assertEqual(new_post.author, self.user)
+        self.assertEqual(new_post.group, self.group)
 
     def test_edit_post(self):
+        """Валидная форма редактирует запись в Post"""
+        posts_count = Post.objects.count()
+        new_group = Group.objects.create(
+            title='new_group_title',
+            slug='new_group_slug',
+            description='new_group_description'
+
+        )
         form_data = {
-            'text': 'Редактирование поста',
-            'group': self.group.id,
+            'text': 'Тестовый пост',
+            'group': new_group.id,
         }
         response = self.author_client.post(
             reverse('posts:post_edit', kwargs={'post_id': self.post.id}),
             data=form_data,
+            follow=True
         )
+        edit_post = Post.objects.get(id=self.post.id)
+        self.assertEqual(Post.objects.count(), posts_count)
+        self.assertEqual(edit_post.text, 'Тестовый пост')
+        self.assertEqual(edit_post.group, new_group)
+
         self.assertRedirects(response, reverse('posts:post_detail', kwargs={
             'post_id': self.post.id}))
         self.assertTrue(Post.objects.filter(
-            text='Редактирование поста',
-            group=self.group.id,
+            text='Тестовый пост',
+            group=new_group,
         ).exists()
+        )
+        old_group_response = self.authorized_client.get(
+            reverse('posts:post_list', args=(self.group.slug,))
+        )
+        self.assertEqual(
+            old_group_response.context['page_obj'].paginator.count, 0
         )
 
     def test_create_post_with_image(self):
+        """Валидная форма создает запись с картинкой в Post"""
         tasks_count = Post.objects.count()
 
         small_gif = (
@@ -125,8 +150,8 @@ class PostCreateFormTests(TestCase):
         )
 
     def test_create_comment(self):
+        """Валидная форма создает запись в Comment"""
         comment_count = Comment.objects.count()
-
         form_data = {
             'text': 'новый комментарий'
         }
@@ -153,3 +178,11 @@ class PostCreateFormTests(TestCase):
                 text='новый комментарий',
             ).exists()
         )
+        Comment.objects.create(
+            post=self.post,
+            author=self.user,
+            created=self.authorized_client
+        )
+        new_comment = Comment.objects.latest('id')
+        self.assertEqual(new_comment.author, self.user)
+        self.assertEqual(new_comment.post, self.post)

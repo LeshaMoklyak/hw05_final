@@ -1,11 +1,13 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.cache import cache_page
 
 from .forms import PostForm, CommentForm
 from .models import Group, Post, User, Follow
 from .utils import get_Paginator
 
 
+@cache_page(20, key_prefix='index_page')
 def index(request):
     post_list = Post.objects.select_related('group', 'author')
     context = {
@@ -27,8 +29,9 @@ def group_posts(request, slug):
 def profile(request, username):
     author = get_object_or_404(User, username=username)
     post_list = author.posts.select_related('group')
-    following = request.user.is_authenticated and Follow.objects.filter(
-        author=author, user=request.user).exists()
+    following = request.user.is_authenticated and\
+        request.user != author and Follow.objects.filter(
+            author=author, user=request.user).exists()
     context = {
         'author': author,
         'page_obj': get_Paginator(post_list, request),
@@ -105,10 +108,8 @@ def follow_index(request):
 @login_required
 def profile_follow(request, username):
     author = get_object_or_404(User, username=username)
-    if author != request.user and not (
-        Follow.objects.filter(author=author, user=request.user)
-    ):
-        Follow.objects.create(
+    if author != request.user:
+        Follow.objects.get_or_create(
             user=request.user,
             author=author
         )
